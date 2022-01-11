@@ -1,0 +1,125 @@
+---
+title: "tdcs-analyses"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidyboot)
+library(ggplot2)
+library(ggthemes)
+library(broom)
+library(lme4)
+library(lmerTest)
+```
+
+# Allyson models
+
+## semantic fluency
+
+```{r}
+## read in the file and the lexical characteristics
+## exclude first responses (-999)
+asem = read.csv("tdcs_semantic.csv")%>% filter(norm_phon != -999) %>%
+  left_join(read.csv("tdcs_elp.csv"))
+
+## combine together parallel semantic categories to see comparative performance
+# animals-clothes
+# boys names - girls names
+# fruit/furniture - vegetables/instruments
+asem = asem %>%
+  group_by(event, domain)%>%
+  mutate(response_number = row_number(),
+         event = ifelse(event == "pre", "1-pre", "2-post"),
+         newdomain = ifelse(domain %in% c("animals", "clothes"), "animals-clothes",
+                         ifelse(domain %in% c("boys", "girls"), "boys-girls",
+                                "fruitfurniture-veginstruments")))
+  
+## mean semantic and phonological similarity, and mean frequency
+## frequency scaled by a factor of 5 for plotting
+ asem %>%
+      mutate(LgSUBTLWF = LgSUBTLWF/5)%>%
+  select(event, newdomain, domain,vfclust_entry, norm_phon, glove_similarity, LgSUBTLWF)%>%
+  pivot_longer(names_to = "type", cols = norm_phon:LgSUBTLWF) %>%
+   group_by(newdomain, event, type) %>%
+     summarise(ci = list(mean_cl_boot(value) %>% 
+                        rename(mean=y, lwr=ymin, upr=ymax))) %>% unnest %>%
+   mutate(type = fct_recode(type, semantic = "glove_similarity", phonemic = "norm_phon",
+                            frequency = "LgSUBTLWF"))%>%
+   ggplot(aes(x= event, y = mean,
+             group = type, color = type)) +
+       geom_errorbar(aes(ymin=lwr, ymax=upr), size = 0.5, width=.1, 
+                color = "lightgray", position = position_dodge(0))+
+     geom_point(size = 3)+
+   geom_line()+
+  theme_few()+
+   scale_color_hc()+
+   facet_wrap(~newdomain)+
+   labs(x = "timepoint", y = "similarity", title = "semantic fluency")+
+   theme(aspect.ratio = 1)+
+  theme(strip.text.x = element_text(size = rel(1.4)))
+ 
+ ## decrease in phonemic similarity in "animals-clothes" domains
+ asem_ac = asem %>% filter(newdomain %in% "animals-clothes")
+ 
+ summary(lm(data = asem_ac, norm_phon ~ event))
+ 
+ ##  on all domains
+ summary(lm(data = asem, norm_phon ~ event*newdomain))
+ ## no difference in semantic similarity of frequency
+ summary(lm(data = asem, glove_similarity ~ event*newdomain))
+ summary(lm(data = asem, LgSUBTLWF ~ event*newdomain))
+ 
+ ## total number of items, pre-post
+ asem %>% filter(valid == 1) %>% group_by(event, newdomain) %>% summarise(n= n())%>%
+   arrange(newdomain)
+
+```
+## letter fluency
+```{r}
+alet = read.csv("tdcs_letter.csv")%>% filter(norm_phon != -999) %>%
+  left_join(read.csv("tdcs_elp.csv"))
+
+alet = alet %>%
+  group_by(event, domain)%>%
+  mutate(response_number = row_number(),
+         event = ifelse(event == "pre", "1-pre", "2-post"))
+  
+## mean sem and phon
+
+ alet %>%
+   mutate(LgSUBTLWF = LgSUBTLWF/5)%>%
+  select(event, domain,vfclust_entry, norm_phon, glove_similarity, LgSUBTLWF)%>%
+  pivot_longer(names_to = "type", cols = norm_phon:LgSUBTLWF) %>%
+   group_by(event, type) %>%
+     summarise(ci = list(mean_cl_boot(value) %>% 
+                        rename(mean=y, lwr=ymin, upr=ymax))) %>% unnest %>%
+   mutate(type = fct_recode(type, semantic = "glove_similarity", phonemic = "norm_phon",
+                            frequency = "LgSUBTLWF"))%>%
+   ggplot(aes(x= event, y = mean,
+             group = type, color = type)) +
+       geom_errorbar(aes(ymin=lwr, ymax=upr), size = 0.5, width=.1, 
+                color = "lightgray", position = position_dodge(0))+
+     geom_point(size = 3)+
+   geom_line()+
+  theme_few()+
+   scale_color_hc()+
+   labs(x = "timepoint", y = "similarity", title = "letter fluency")+
+   theme(aspect.ratio = 1)+
+  theme(strip.text.x = element_text(size = rel(1.4)))
+ 
+ ## increase in successive phonemic similarity pre-post
+ summary(lm(data = alet, norm_phon ~ event))
+ ## no difference in semantic and frequency
+ summary(lm(data = alet, glove_similarity ~ event))
+ summary(lm(data = alet, LgSUBTLWF ~ event))
+ 
+ ## num items pre-post
+ 
+ alet%>% filter(valid == 1) %>% group_by(event) %>% summarise(n= n())
+   
+
+```
+
+
